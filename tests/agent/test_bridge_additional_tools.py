@@ -31,6 +31,7 @@ from inspect_ai.model._openai_responses import (
     openai_responses_tools,
 )
 from inspect_ai.tool._tool_info import ToolInfo
+from inspect_ai.tool._tool_params import ToolParams
 
 WEB_SEARCH_PROVIDERS: Any = {}
 CODE_EXECUTION_PROVIDERS: Any = {}
@@ -189,3 +190,77 @@ def test_reconstruction_without_verbatim_drifts() -> None:
     assert reconstructed != original
     # the schema extension is lost on the reconstruction path
     assert "encrypted" not in reconstructed["parameters"]
+
+
+def _bare_function_tool() -> dict[str, Any]:
+    # what the openai SDK sends when the client declares only a name:
+    # `FunctionToolParam.parameters` is `Required[Optional[...]]`, so the
+    # omitted fields arrive as None rather than being absent.
+    return {
+        "type": "function",
+        "name": "noop",
+        "parameters": None,
+        "strict": None,
+        "description": None,
+    }
+
+
+def _function_tool_info(original: dict[str, Any]) -> ToolInfo:
+    tool_info = tool_from_responses_tool(
+        cast(Any, original),
+        WEB_SEARCH_PROVIDERS,
+        CODE_EXECUTION_PROVIDERS,
+        allow_remote_mcp=True,
+    )
+    assert isinstance(tool_info, ToolInfo)
+    return tool_info
+
+
+def test_function_tool_without_parameters_or_description() -> None:
+    original = _bare_function_tool()
+    tool_info = _function_tool_info(original)
+    assert tool_info.name == "noop"
+    assert tool_info.description == "noop"
+    assert tool_info.parameters == ToolParams()
+    # the None parameters still go back to the model verbatim
+    assert _emit(tool_info) == original
+
+
+def test_function_tool_with_description_key_absent() -> None:
+    original = _bare_function_tool()
+    del original["description"]
+    tool_info = _function_tool_info(original)
+    assert tool_info.description == "noop"
+    assert _emit(tool_info) == original
+
+
+def test_function_tool_with_empty_parameters_object() -> None:
+    original = {**_bare_function_tool(), "parameters": {}}
+    tool_info = _function_tool_info(original)
+    assert tool_info.parameters == ToolParams()
+    assert _emit(tool_info) == original
+
+
+def test_function_tool_keeps_declared_parameters_and_description() -> None:
+    original = {
+        **_bare_function_tool(),
+        "description": "Does nothing.",
+        "parameters": {
+            "type": "object",
+            "properties": {"a": {"type": "string"}},
+            "required": ["a"],
+        },
+    }
+    tool_info = _function_tool_info(original)
+    assert tool_info.description == "Does nothing."
+    assert tool_info.parameters.required == ["a"]
+    assert set(tool_info.parameters.properties) == {"a"}
+    assert _emit(tool_info) == original
+
+
+def test_custom_tool_without_description_uses_name() -> None:
+    original = _custom_tool()
+    del original["description"]
+    tool_info = _function_tool_info(original)
+    assert tool_info.description == "exec"
+    assert _emit(tool_info) == original

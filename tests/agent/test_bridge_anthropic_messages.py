@@ -24,6 +24,7 @@ from inspect_ai.model._chat_message import (
 from inspect_ai.model._providers.anthropic import AnthropicAPI, message_block_params
 from inspect_ai.tool import WebSearchProviders
 from inspect_ai.tool._tool_info import ToolInfo
+from inspect_ai.tool._tool_params import ToolParams
 from inspect_ai.tool._tool_util import tool_to_tool_info
 
 
@@ -449,3 +450,51 @@ def test_bridge_unknown_web_search_version_uses_provider_choice(
         "web_fetch_20260209",
         "web_search_20260209",
     ]
+
+
+def _bridged_tool_info(client_tool: dict[str, Any]) -> ToolInfo:
+    """The ToolInfo the bridge builds for a client's custom tool declaration."""
+    tools = tools_from_anthropic_tools(
+        [cast(Any, client_tool)], None, None, None, False
+    )
+    assert len(tools) == 1
+    assert isinstance(tools[0], ToolInfo)
+    return tools[0]
+
+
+def test_bridge_tool_without_description_uses_name() -> None:
+    # `ToolParam.description` is optional in the anthropic SDK
+    info = _bridged_tool_info(
+        {"name": "noop", "input_schema": {"type": "object", "properties": {}}}
+    )
+    assert info.name == "noop"
+    assert info.description == "noop"
+    assert info.parameters == ToolParams()
+
+
+def test_bridge_tool_with_empty_description_uses_name() -> None:
+    info = _bridged_tool_info(
+        {
+            "name": "noop",
+            "description": "",
+            "input_schema": {"type": "object", "properties": {}},
+        }
+    )
+    assert info.description == "noop"
+
+
+def test_bridge_tool_keeps_description_and_schema() -> None:
+    info = _bridged_tool_info(
+        {
+            "name": "noop",
+            "description": "Does nothing.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "required": ["a"],
+            },
+        }
+    )
+    assert info.description == "Does nothing."
+    assert info.parameters.required == ["a"]
+    assert set(info.parameters.properties) == {"a"}

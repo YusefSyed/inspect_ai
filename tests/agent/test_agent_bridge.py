@@ -23,6 +23,7 @@ from test_helpers.utils import (
 from inspect_ai import Task, eval, eval_async, task
 from inspect_ai._util.content import ContentToolUse
 from inspect_ai.agent import Agent, AgentState, agent, agent_bridge
+from inspect_ai.agent._bridge.completions import tools_from_openai_tools
 from inspect_ai.agent._bridge.types import AgentBridge
 from inspect_ai.agent._bridge.util import bridge_generate
 from inspect_ai.dataset import Sample
@@ -960,6 +961,84 @@ def test_bridged_agent_completions():
 def test_bridged_completions_with_raw_response():
     log = eval(bridged_task(raw_response_completions_agent()), model="mockllm/model")[0]
     assert log.status == "success"
+
+
+def _openai_function_tool(**function: Any) -> Any:
+    return {"type": "function", "function": {"name": "noop", **function}}
+
+
+def test_tools_from_openai_tools_name_only():
+    # valid per the OpenAI API: `description` and `parameters` are optional,
+    # and omitting `parameters` declares a function with no parameters
+    [info] = tools_from_openai_tools([_openai_function_tool()])
+    assert info == ToolInfo(name="noop", description="noop", parameters=ToolParams())
+
+
+def test_tools_from_openai_tools_without_parameters():
+    [info] = tools_from_openai_tools(
+        [_openai_function_tool(description="Does nothing.")]
+    )
+    assert info == ToolInfo(
+        name="noop", description="Does nothing.", parameters=ToolParams()
+    )
+
+
+def test_tools_from_openai_tools_without_description():
+    [info] = tools_from_openai_tools(
+        [
+            _openai_function_tool(
+                parameters={
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}},
+                    "required": ["a"],
+                }
+            )
+        ]
+    )
+    assert info.description == "noop"
+    assert info.parameters.required == ["a"]
+    assert set(info.parameters.properties) == {"a"}
+
+
+def test_tools_from_openai_tools_empty_description_uses_name():
+    [info] = tools_from_openai_tools([_openai_function_tool(description="")])
+    assert info.description == "noop"
+
+
+def test_tools_from_openai_tools_rejects_non_function_tool():
+    with pytest.raises(AssertionError):
+        tools_from_openai_tools(
+            [cast(Any, {"type": "custom", "custom": {"name": "x"}})]
+        )
+
+
+@agent
+def name_only_tool_completions_agent() -> Agent:
+    async def execute(state: AgentState) -> AgentState:
+        async with agent_bridge(state) as bridge:
+            async with AsyncOpenAI(api_key="inspect") as client:
+                completion = await client.chat.completions.create(
+                    model="inspect",
+                    messages=await messages_to_openai(state.messages),
+                    tools=[{"type": "function", "function": {"name": "noop"}}],
+                )
+                bridge.state.output = await model_output_from_openai(completion)
+        return bridge.state
+
+    return execute
+
+
+def test_bridged_completions_tool_without_description_or_parameters():
+    log = eval(bridged_task(name_only_tool_completions_agent()), model="mockllm/model")[
+        0
+    ]
+    assert log.status == "success", log.error
+    assert log.samples
+    model_events = [e for e in log.samples[0].events if isinstance(e, ModelEvent)]
+    assert model_events
+    assert model_events[0].tools == [
+        ToolInfo(name="noop", description="noop", parameters=ToolParams())
+    ]
 
 
 def test_bridged_anthropic_beta_usage():

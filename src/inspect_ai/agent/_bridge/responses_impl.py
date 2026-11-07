@@ -763,16 +763,18 @@ def tool_from_responses_tool(
         # it verbatim: ToolParams validation is lossy (drops schema extensions
         # like `encrypted: true`, normalizes `required`) and models with
         # reserved tool schemas (e.g. codex collaboration tools) reject drift.
+        # `description` is optional and `parameters` may be None (a function
+        # with no parameters); the stashed verbatim param keeps them as sent.
         return ToolInfo(
             name=tool_param["name"],
-            description=tool_param["description"] or tool_param["name"],
-            parameters=ToolParams.model_validate(tool_param["parameters"]),
+            description=tool_param.get("description") or tool_param["name"],
+            parameters=ToolParams.model_validate(tool_param.get("parameters") or {}),
             options={RESPONSES_VERBATIM: dict(tool_param)},
         )
     elif is_custom_tool_param(tool_param):
         return ToolInfo(
             name=tool_param["name"],
-            description=tool_param["description"] or tool_param["name"],
+            description=tool_param.get("description") or tool_param["name"],
             parameters=ToolParams(
                 properties={"input": JSONSchema(type="string", description="Input.")},
                 required=["input"],
