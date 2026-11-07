@@ -6,7 +6,11 @@ from pydantic import JsonValue
 
 from inspect_ai import Task, eval
 from inspect_ai.analysis import (
+    EvalModel,
+    EventInfo,
+    EventTiming,
     SampleColumn,
+    ToolEventColumns,
     events_df,
     messages_df,
     samples_df,
@@ -65,10 +69,19 @@ def _is_tool_message(message: ChatMessage) -> bool:
 def test_events_df_parallel_filter_matches_one_log_of_two() -> None:
     # the security guide log has no tool events, so its worker yields no rows
     logs = [str(SECURITY_GUIDE_LOG), str(BROWSER_LOG)]
-    dfs = events_df(logs, filter=_is_tool_event)
-    dfs_parallel = events_df(logs, filter=_is_tool_event, parallel=2)
+    columns = EvalModel + SampleSummary + EventInfo + EventTiming + ToolEventColumns
+    dfs = events_df(logs, columns=columns, filter=_is_tool_event)
+    dfs_parallel = events_df(logs, columns=columns, filter=_is_tool_event, parallel=2)
     assert len(dfs_parallel) == 4
     assert dfs[EVENT_ID].to_list() == dfs_parallel[EVENT_ID].to_list()
+    # the parallel concat may order a log's wildcard (score) columns differently
+    assert sorted(dfs_parallel.columns) == sorted(dfs.columns)
+    mismatched = {
+        col: (str(dfs[col].dtype), str(dfs_parallel[col].dtype))
+        for col in dfs.columns
+        if dfs[col].dtype != dfs_parallel[col].dtype
+    }
+    assert mismatched == {}, f"(serial, parallel) dtypes differ: {mismatched}"
 
 
 def test_messages_df_parallel_filter_matches_nothing() -> None:

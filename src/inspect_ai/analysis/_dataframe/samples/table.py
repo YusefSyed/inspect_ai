@@ -213,7 +213,9 @@ def _read_samples_df(
 
         # recombine df
         df = pd.concat(
-            _reconcile_string_columns(cast(list[pd.DataFrame], df_results)),
+            _type_empty_frames(
+                _reconcile_string_columns(cast(list[pd.DataFrame], df_results))
+            ),
             ignore_index=True,
         )
         subset = f"{detail.name}_id" if detail else SAMPLE_ID
@@ -441,9 +443,7 @@ def _read_samples_df_serial(
         details_table.drop_duplicates(
             f"{detail.name}_id", keep="first", inplace=True, ignore_index=True
         )
-        # no detail records (e.g. the filter matched none of them): join an
-        # empty details table so the result is empty rather than the samples
-        # table (which has no detail id column for reorder_samples_df_columns)
+        # keep the detail columns when nothing matched
         if len(details_table) == 0 and len(samples_table) > 0:
             details_table = empty_details_table(detail.name, columns_detail)
         if len(details_table.columns) > 0:
@@ -454,8 +454,8 @@ def _read_samples_df_serial(
                 suffixes=(f"_{detail.name}", SAMPLE_SUFFIX),
             )
 
-    # join eval_records (there are none to join when the logs have no samples)
-    if EVAL_ID in samples_table.columns:
+    # join eval_records
+    if len(sample_records) > 0:
         samples_table = samples_table.merge(
             evals_table, on=EVAL_ID, how="left", suffixes=(SAMPLE_SUFFIX, EVAL_SUFFIX)
         )
@@ -658,6 +658,23 @@ def _reconcile_string_columns(dfs: list["pd.DataFrame"]) -> list["pd.DataFrame"]
                 )
         reconciled.append(df)
     return reconciled
+
+
+def _type_empty_frames(dfs: list["pd.DataFrame"]) -> list["pd.DataFrame"]:
+    """Give zero-row frames the column dtypes the non-empty frames have.
+
+    A log with no matching detail records yields a zero-row frame whose detail
+    columns are typed as strings, and concatenating those with typed columns
+    (timestamps, numbers) would make them object columns.
+    """
+    dtypes = {col: df[col].dtype for df in dfs if len(df) > 0 for col in df.columns}
+
+    typed: list[pd.DataFrame] = []
+    for df in dfs:
+        if len(df) == 0:
+            df = df.astype({col: dtypes[col] for col in df.columns if col in dtypes})
+        typed.append(df)
+    return typed
 
 
 def _convert_to_large_string(df: "pd.DataFrame") -> "pd.DataFrame":
