@@ -1092,6 +1092,35 @@ def test_csv_explicit_utf8_preserves_bom(tmp_path: Path) -> None:
     assert dataset[0].target == "résumé"
 
 
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig"])
+@pytest.mark.parametrize("suffix", [".json", ".jsonl"])
+def test_json_utf8_with_or_without_bom(
+    tmp_path: Path, encoding: str, suffix: str
+) -> None:
+    json_file = tmp_path / f"data{suffix}"
+    body = json_module.dumps(
+        {"input": "café \ufeff text", "target": "résumé"}, ensure_ascii=False
+    )
+    if suffix == ".json":
+        body = f"[{body}]"
+    json_file.write_bytes(body.encode(encoding))
+
+    dataset = json_dataset(str(json_file))
+
+    assert len(dataset) == 1
+    assert dataset[0].input == "café \ufeff text"
+    assert dataset[0].target == "résumé"
+
+
+def test_json_explicit_utf8_preserves_bom(tmp_path: Path) -> None:
+    json_file = tmp_path / "data.json"
+    json_file.write_bytes('[{"input": "café", "target": "résumé"}]'.encode("utf-8-sig"))
+
+    # an explicit "utf-8" opts out of BOM stripping, so the BOM reaches json.load
+    with pytest.raises(json_module.JSONDecodeError, match="UTF-8 BOM"):
+        json_dataset(str(json_file), encoding="utf-8")
+
+
 def write_ragged_csv(tmp_path: Path, body: str) -> str:
     path = tmp_path / "data.csv"
     path.write_text(body, newline="")

@@ -32,7 +32,7 @@ def json_dataset(
     seed: int | None = None,
     shuffle_choices: bool | int | None = None,
     limit: int | None = None,
-    encoding: str = "utf-8",
+    encoding: str = "utf-8-sig",
     name: str | None = None,
     fs_options: dict[str, Any] | None = None,
     **reader_kwargs: Any,
@@ -58,7 +58,8 @@ def json_dataset(
       seed: Seed used for random shuffle. Only valid with a boolean `shuffle`.
       shuffle_choices: Whether to shuffle the choices. If an int is passed, this will be used as the seed when shuffling.
       limit: Limit the number of records to read.
-      encoding: Text encoding for file (defaults to "utf-8").
+      encoding: Text encoding for file (defaults to "utf-8-sig", which accepts
+        UTF-8 with or without a byte-order mark).
       name: Optional name for dataset (for logging). If not specified,
         defaults to the stem of the filename.
       fs_options: Optional. Additional arguments to pass through
