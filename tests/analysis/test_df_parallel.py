@@ -17,8 +17,12 @@ from inspect_ai.analysis._dataframe.samples.columns import (
 )
 from inspect_ai.analysis._dataframe.samples.table import SAMPLE_ID
 from inspect_ai.dataset import Sample
+from inspect_ai.event import Event
+from inspect_ai.model import ChatMessage
 
 LOGS_DIR = Path(__file__).parent / "test_logs"
+SECURITY_GUIDE_LOG = LOGS_DIR / "2025-05-12T20-28-26-04-00_security-guide.json"
+BROWSER_LOG = LOGS_DIR / "2025-05-12T20-27-36-04-00_browser.json"
 
 EVENT_ID = "event_id"
 MESSAGE_ID = "message_id"
@@ -47,6 +51,32 @@ def test_messages_df_parallel() -> None:
     dfs = messages_df(LOGS_DIR)
     dfs_parallel = messages_df(LOGS_DIR, parallel=2)
     assert dfs[MESSAGE_ID].to_list() == dfs_parallel[MESSAGE_ID].to_list()
+
+
+# filters for the parallel readers must be picklable (module level)
+def _is_tool_event(event: Event) -> bool:
+    return event.event == "tool"
+
+
+def _is_tool_message(message: ChatMessage) -> bool:
+    return message.role == "tool"
+
+
+def test_events_df_parallel_filter_matches_one_log_of_two() -> None:
+    # the security guide log has no tool events, so its worker yields no rows
+    logs = [str(SECURITY_GUIDE_LOG), str(BROWSER_LOG)]
+    dfs = events_df(logs, filter=_is_tool_event)
+    dfs_parallel = events_df(logs, filter=_is_tool_event, parallel=2)
+    assert len(dfs_parallel) == 4
+    assert dfs[EVENT_ID].to_list() == dfs_parallel[EVENT_ID].to_list()
+
+
+def test_messages_df_parallel_filter_matches_nothing() -> None:
+    dfs = messages_df(SECURITY_GUIDE_LOG, filter=_is_tool_message)
+    dfs_parallel = messages_df(SECURITY_GUIDE_LOG, filter=_is_tool_message, parallel=2)
+    assert len(dfs_parallel) == 0
+    assert list(dfs_parallel.columns) == list(dfs.columns)
+    assert MESSAGE_ID in dfs_parallel.columns
 
 
 def test_samples_df_parallel_reconciles_string_columns(tmp_path: Path) -> None:

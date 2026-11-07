@@ -48,11 +48,19 @@ from inspect_ai.log import (
 from inspect_ai.model import ChatMessage, ChatMessageUser, ModelOutput, get_model
 from inspect_ai.model._model import requested_model
 from inspect_ai.scorer import Score, Scorer, Target, scorer
-from inspect_ai.solver import Generate, TaskState, generate, solver, use_tools
+from inspect_ai.solver import (
+    Generate,
+    TaskState,
+    generate,
+    solver,
+    system_message,
+    use_tools,
+)
 from inspect_ai.tool import Tool, tool
 
 LOGS_DIR = Path(__file__).parent / "test_logs"
 SECURITY_GUIDE_LOG = LOGS_DIR / "2025-05-12T20-28-26-04-00_security-guide.json"
+BROWSER_LOG = LOGS_DIR / "2025-05-12T20-27-36-04-00_browser.json"
 
 
 def test_evals_df():
@@ -415,6 +423,51 @@ def test_events_df_columns():
 def test_events_df_filter():
     df = events_df(LOGS_DIR, filter=lambda e: e.event == "tool")
     assert len(df) == 4
+
+
+def test_events_df_filter_matches_nothing():
+    # the security guide log has no tool events
+    df = events_df(SECURITY_GUIDE_LOG, filter=lambda e: e.event == "tool")
+    assert len(df) == 0
+    assert list(df.columns) == list(events_df(SECURITY_GUIDE_LOG).columns)
+    assert "event_id" in df.columns
+    assert "sample_id" in df.columns
+
+
+def test_messages_df_filter_matches_nothing():
+    # the security guide log has no tool messages
+    df = messages_df(SECURITY_GUIDE_LOG, filter=lambda m: m.role == "tool")
+    assert len(df) == 0
+    assert list(df.columns) == list(messages_df(SECURITY_GUIDE_LOG).columns)
+    assert "message_id" in df.columns
+    assert "sample_id" in df.columns
+
+
+def test_events_df_filter_matches_one_log_of_two():
+    logs = [str(SECURITY_GUIDE_LOG), str(BROWSER_LOG)]
+    df = events_df(logs, filter=lambda e: e.event == "tool")
+    assert len(df) == 4
+    assert df["log"].map(lambda log: Path(log).name).unique() == [BROWSER_LOG.name]
+
+
+def test_messages_df_filter_matches_one_log_of_two():
+    logs = [str(SECURITY_GUIDE_LOG), str(BROWSER_LOG)]
+    df = messages_df(logs, filter=lambda m: m.role == "tool")
+    assert len(df) == 4
+    assert df["log"].map(lambda log: Path(log).name).unique() == [BROWSER_LOG.name]
+
+
+def test_messages_df_log_without_messages(tmp_path: Path):
+    # a solver that never calls the model leaves the samples with no messages
+    log = eval(
+        Task(dataset=[Sample(input="hi")], solver=[system_message("sys")]),
+        model="mockllm/model",
+        log_dir=str(tmp_path),
+    )[0]
+    df = messages_df(log.location)
+    assert len(df) == 0
+    assert "message_id" in df.columns
+    assert "sample_id" in df.columns
 
 
 def test_events_df_model_event_requested_model(tmp_path: Path):

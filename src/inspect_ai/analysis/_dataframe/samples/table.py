@@ -441,7 +441,12 @@ def _read_samples_df_serial(
         details_table.drop_duplicates(
             f"{detail.name}_id", keep="first", inplace=True, ignore_index=True
         )
-        if len(details_table) > 0:
+        # no detail records (e.g. the filter matched none of them): join an
+        # empty details table so the result is empty rather than the samples
+        # table (which has no detail id column for reorder_samples_df_columns)
+        if len(details_table) == 0 and len(samples_table) > 0:
+            details_table = empty_details_table(detail.name, columns_detail)
+        if len(details_table.columns) > 0:
             samples_table = details_table.merge(
                 samples_table,
                 on=SAMPLE_ID,
@@ -449,8 +454,8 @@ def _read_samples_df_serial(
                 suffixes=(f"_{detail.name}", SAMPLE_SUFFIX),
             )
 
-    # join eval_records
-    if len(samples_table) > 0:
+    # join eval_records (there are none to join when the logs have no samples)
+    if EVAL_ID in samples_table.columns:
         samples_table = samples_table.merge(
             evals_table, on=EVAL_ID, how="left", suffixes=(SAMPLE_SUFFIX, EVAL_SUFFIX)
         )
@@ -519,6 +524,28 @@ def duplicate_assistant_message_reducer(
 @lru_cache(maxsize=100)
 def message_hash(message: str) -> str:
     return mm3_hash(message)
+
+
+def empty_details_table(
+    details_name: str, detail_columns: list[Column]
+) -> "pd.DataFrame":
+    """Empty details table with the columns a non-empty one would have.
+
+    Wildcard columns are only known once there are records, so they are left out.
+    All-null columns are typed as strings, as records_to_pandas types them.
+    """
+    import pandas as pd
+    import pyarrow as pa
+
+    string = pd.ArrowDtype(pa.string())
+    dtypes: dict[str, pd.ArrowDtype] = {SAMPLE_ID: string, f"{details_name}_id": string}
+    for column in detail_columns:
+        if "*" not in column.name:
+            dtypes.setdefault(column.name, string)
+    dtypes["order"] = pd.ArrowDtype(pa.int64())
+    return pd.DataFrame(
+        {name: pd.Series(dtype=dtype) for name, dtype in dtypes.items()}
+    )
 
 
 def reorder_samples_df_columns(
