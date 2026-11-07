@@ -1,3 +1,5 @@
+from typing import Literal
+
 import pytest
 from test_helpers.utils import simple_task_state
 
@@ -426,3 +428,106 @@ async def test_numeric_long_repeated_chinese_units_scores():
 
     assert result is not None
     assert result.text == CORRECT
+
+
+# --- comma is a thousands separator, not glue --------------------------------
+# strip_numeric_punctuation used to delete every ",", so a tuple, list or
+# coordinate pair ("1,2") scored CORRECT against the concatenation of its
+# parts ("12"), and "12" scored CORRECT against a target of "1,2". Only a
+# comma in thousands-separator position may be removed.
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("location", ["begin", "end", "any", "exact"])
+@pytest.mark.parametrize(
+    "model_output,target",
+    [
+        ("1,2", "12"),
+        ("1,2,3", "123"),
+        ("12", "1,2"),
+        # malformed grouping: neither a thousands number nor its digits run
+        ("1,234,56", "123456"),
+    ],
+)
+async def test_numeric_comma_separated_values_do_not_collapse(
+    location: Literal["begin", "end", "any", "exact"], model_output: str, target: str
+):
+    scorer = match(numeric=True, location=location)
+    state = simple_task_state(model_output=model_output)
+    result = await scorer(state, Target([target]))
+
+    assert result is not None
+    assert result.text == INCORRECT
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("location", ["begin", "end", "any"])
+@pytest.mark.parametrize(
+    "model_output,target",
+    [
+        ("The answer is (3,4)", "34"),
+        ("Values: 1,2 and 1,000", "12"),
+    ],
+)
+async def test_numeric_comma_separated_values_in_text_do_not_collapse(
+    location: Literal["begin", "end", "any", "exact"], model_output: str, target: str
+):
+    scorer = match(numeric=True, location=location)
+    state = simple_task_state(model_output=model_output)
+    result = await scorer(state, Target([target]))
+
+    assert result is not None
+    assert result.text == INCORRECT
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("location", ["begin", "end", "any", "exact"])
+@pytest.mark.parametrize(
+    "model_output,target",
+    [
+        ("1,000", "1000"),
+        ("100,000", "100000"),
+        ("-1,000", "-1000"),
+        ("12,345,678", "12345678"),
+        ("1,234.5", "1234.5"),
+        ("$1,000,000.50", "1000000.50"),
+    ],
+)
+async def test_numeric_thousands_separators_still_match(
+    location: Literal["begin", "end", "any", "exact"], model_output: str, target: str
+):
+    scorer = match(numeric=True, location=location)
+    state = simple_task_state(model_output=model_output)
+    result = await scorer(state, Target([target]))
+
+    assert result is not None
+    assert result.text == CORRECT
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("location", ["begin", "end", "any"])
+async def test_numeric_thousands_separators_in_text_still_match(
+    location: Literal["begin", "end", "any", "exact"],
+):
+    scorer = match(numeric=True, location=location)
+    state = simple_task_state(model_output="The total is 1,000.")
+    result = await scorer(state, Target(["1000"]))
+
+    assert result is not None
+    assert result.text == CORRECT
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("location", ["end", "any"])
+async def test_numeric_thousands_number_beside_comma_pair(
+    location: Literal["begin", "end", "any", "exact"],
+):
+    # the pair "1,2" must not become "12", and the grouped "1,000" must still
+    # be found as 1000 in the same output
+    scorer = match(numeric=True, location=location)
+    state = simple_task_state(model_output="Values: 1,2 and 1,000")
+    result = await scorer(state, Target(["1000"]))
+
+    assert result is not None
+    assert result.text == CORRECT
+    assert result.answer == "1000"

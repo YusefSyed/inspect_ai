@@ -33,6 +33,9 @@ def strip_punctuation(s: str) -> str:
     return s.strip(string.whitespace + string.punctuation)
 
 
+_THOUSANDS_GROUPED = re.compile(r"(?<![\d,])\d{1,3}(?:,\d{3})+(?![\d,])")
+
+
 def strip_numeric_punctuation(s: str) -> str:
     # un-escape LaTeX-escaped currency/formatting symbols (e.g. "\$20" -> "$20").
     # Models frequently escape these inside LaTeX math mode, since a bare "$"
@@ -42,9 +45,14 @@ def strip_numeric_punctuation(s: str) -> str:
     # token by callers such as match(numeric=True).
     s = re.sub(r"\\([$,£,€*_])", r"\1", s)
 
-    # strip $, €, £, and ,
-    # *,_ to string formatting characters sometimes added by LLMs
-    stripped = re.sub(r"[$,£,€,*,_]", "", s)
+    # strip $, €, £ and the *,_ formatting characters sometimes added by LLMs
+    stripped = re.sub(r"[$£€*_]", "", s)
+
+    # strip , only as a thousands separator: a digit run grouped in threes
+    # that is not part of a longer digit/comma run. Any other comma is left
+    # for the numeric parser, so "1,2" and "(3,4)" are not glued into "12"
+    # and "34".
+    stripped = _THOUSANDS_GROUPED.sub(lambda m: m.group().replace(",", ""), stripped)
 
     # strip . if it's followed by a space, the end of the string,
     # or a non-digit character
