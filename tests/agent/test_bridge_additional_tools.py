@@ -193,9 +193,8 @@ def test_reconstruction_without_verbatim_drifts() -> None:
 
 
 def _bare_function_tool() -> dict[str, Any]:
-    # what the openai SDK sends when the client declares only a name:
-    # `FunctionToolParam.parameters` is `Required[Optional[...]]`, so the
-    # omitted fields arrive as None rather than being absent.
+    # a client that passes None for the optional fields (`parameters` is
+    # `Required[Optional[...]]` in `FunctionToolParam`)
     return {
         "type": "function",
         "name": "noop",
@@ -231,6 +230,15 @@ def test_function_tool_with_description_key_absent() -> None:
     del original["description"]
     tool_info = _function_tool_info(original)
     assert tool_info.description == "noop"
+    assert _emit(tool_info) == original
+
+
+def test_function_tool_with_only_a_name() -> None:
+    # what the openai SDK sends when the client declares only a name
+    original = {"type": "function", "name": "noop"}
+    tool_info = _function_tool_info(original)
+    assert tool_info.description == "noop"
+    assert tool_info.parameters == ToolParams()
     assert _emit(tool_info) == original
 
 

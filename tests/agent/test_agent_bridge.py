@@ -1003,7 +1003,9 @@ def test_tools_from_openai_tools_without_description():
 def test_tools_from_openai_tools_keeps_empty_description():
     # sandbox tool grants match declarations to served tools by description,
     # and an empty description is matched like any other
-    [info] = tools_from_openai_tools([_openai_function_tool(description="")])
+    [info] = tools_from_openai_tools(
+        [_openai_function_tool(description="", parameters={})]
+    )
     assert info.description == ""
 
 
