@@ -113,11 +113,40 @@ def match_str(
             return answer, False
         answer = v
         return answer, v == t
+    elif numeric and (t_list := _normalized_number_list(t)) is not None:
+        # the target is a comma-separated list of numbers ("1,2,3"): compare
+        # whole list tokens, not raw characters, so "11,2,3" does not end
+        # with a match for "1,2,3"
+        if location == "exact":
+            # the whole value is the list, so "1, 2, 3" is unambiguous
+            v = re.sub(r"(?<=\d)\s*,\s*(?=\d)", ",", v)
+            v_list = _normalized_number_list(
+                strip_numeric_punctuation(v), trim_punctuation=False
+            )
+            return answer if v_list is None else v_list, v_list == t_list
+        words = re.split(r"\s+", strip_numeric_punctuation(v))
+        lists = [x for x in map(_normalized_number_list, words) if x is not None]
+        if location == "any":
+            return (t_list, True) if t_list in lists else (answer, False)
+        if location == "end":
+            lists.reverse()
+        v_list = lists[0] if lists else ""
+        return v_list, v_list == t_list
     elif ignore_punctuation:
         v = strip_punctuation(v)
         t = strip_punctuation(t)
 
     # comparisons
+    if numeric and location != "exact" and _DIGIT_COMMA_DIGIT.search(t):
+        # a target with a digit,digit comma ("1,2-dichloroethane") must not
+        # match inside a longer number ("11,2-dichloroethane")
+        before = r"(?<!\d)(?<!\d[,.])" if t[0].isdigit() else ""
+        after = r"(?!\d|[,.]\d)" if t[-1].isdigit() else ""
+        if location == "begin":
+            before = r"\A"
+        elif location == "end":
+            after = r"\Z"
+        return answer, re.search(before + re.escape(t) + after, v) is not None
     if location == "begin":
         return answer, v.startswith(t)
     elif location == "end":
@@ -127,6 +156,8 @@ def match_str(
     else:
         return answer, t in v
 
+
+_DIGIT_COMMA_DIGIT = re.compile(r"\d,\d")
 
 # Sentence/enclosing punctuation only. Operator characters (~ < > = etc.)
 # are deliberately excluded: "<42", ">=42", "~42" express bounds or
@@ -146,12 +177,19 @@ def _parse_number(s: str, *, trim_punctuation: bool = True) -> float | None:
     full set of inputs handled by ``unicode_number_to_float`` (unicode
     minus, vulgar fractions, superscripts, Chinese numerals, fullwidth
     digits, locale grouping). Rejects strings with trailing non-numeric
-    content (so ``"5 some text"`` returns None). Sentence/enclosing
-    punctuation attached to the number ("42!", "(42)") is trimmed unless
-    ``trim_punctuation=False`` — the ``location="exact"`` path passes False
-    so that exact stays actually exact. ``nan`` and ``inf`` also return None.
+    content (so ``"5 some text"`` returns None) and any ASCII comma, which
+    ``strip_numeric_punctuation`` leaves only between digits outside a
+    thousands grouping (so ``"1,2"`` is not read as a locale decimal).
+    Sentence/enclosing punctuation attached to the number ("42!", "(42)")
+    is trimmed unless ``trim_punctuation=False`` — the ``location="exact"``
+    path passes False so that exact stays actually exact. ``nan`` and
+    ``inf`` also return None.
     """
     s_cleaned = _clean_numeric_word(s) if trim_punctuation else s
+    # a comma left after strip_numeric_punctuation sits between two digits
+    # outside a thousands grouping ("1,2"): not one number
+    if "," in s_cleaned:
+        return None
     for parse in (float, unicode_number_to_float):
         try:
             num = parse(s_cleaned)
@@ -164,6 +202,22 @@ def _parse_number(s: str, *, trim_punctuation: bool = True) -> float | None:
 
 def _is_number(s: str) -> bool:
     return _parse_number(s) is not None
+
+
+def _normalized_number_list(s: str, *, trim_punctuation: bool = True) -> str | None:
+    """Normalize a comma-separated list of two or more numbers, or None."""
+    if trim_punctuation:
+        s = _clean_numeric_word(s)
+    parts = s.split(",")
+    if len(parts) < 2:
+        return None
+    normalized: list[str] = []
+    for part in parts:
+        num = _parse_number(part, trim_punctuation=False)
+        if num is None:
+            return None
+        normalized.append(format(num, ".5g"))
+    return ",".join(normalized)
 
 
 def first_number_normalized(words: list[str]) -> str:

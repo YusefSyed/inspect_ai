@@ -33,7 +33,12 @@ def strip_punctuation(s: str) -> str:
     return s.strip(string.whitespace + string.punctuation)
 
 
-_THOUSANDS_GROUPED = re.compile(r"(?<![\d,])\d{1,3}(?:,\d{3})+(?![\d,])")
+# a digit run grouped by commas in threes ("1,234,567") or in the Indian
+# lakh style ("12,34,567"), not continuing a longer digit/comma run and
+# not in the fractional part of a decimal
+_THOUSANDS_GROUPED = re.compile(
+    r"(?<!\d)(?<!\d[,.])(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})+,\d{3})(?!\d|,\d)"
+)
 
 
 def strip_numeric_punctuation(s: str) -> str:
@@ -48,11 +53,11 @@ def strip_numeric_punctuation(s: str) -> str:
     # strip $, €, £ and the *,_ formatting characters sometimes added by LLMs
     stripped = re.sub(r"[$£€*_]", "", s)
 
-    # strip , only as a thousands separator: a digit run grouped in threes
-    # that is not part of a longer digit/comma run. Any other comma is left
-    # for the numeric parser, so "1,2" and "(3,4)" are not glued into "12"
-    # and "34".
+    # strip , inside a thousands grouping, and any , not between two digits.
+    # A remaining digit,digit comma ("1,2", "(3,4)") is kept so the token is
+    # not read as one number.
     stripped = _THOUSANDS_GROUPED.sub(lambda m: m.group().replace(",", ""), stripped)
+    stripped = re.sub(r"(?<!\d),|,(?!\d)", "", stripped)
 
     # strip . if it's followed by a space, the end of the string,
     # or a non-digit character

@@ -43,29 +43,29 @@ from inspect_ai._util.text import strip_numeric_punctuation
         ("\\€20", "20"),
         ("\\*20\\*", "20"),
         ("\\_20\\_", "20"),
-        # LaTeX thin-space grouping ("1\,234") un-escapes to a thousands
-        # separator and is stripped like one.
+        # a comma is stripped inside a thousands (or lakh) grouping, or when
+        # it is not between two digits
         ("1\\,234", "1234"),
-        # Only a comma inside a well-formed thousands grouping (groups of
-        # three, not part of a longer digit/comma run) is stripped.
         ("1,234,567.89", "1234567.89"),
         ("12,345,678", "12345678"),
         ("-1,000", "-1000"),
         ("1,000.", "1000"),
-        # Any other comma is left alone: "1,2" is a pair, not twelve, and
-        # deleting it made match(numeric=True) score "1,2" CORRECT against
-        # "12". The remaining commas are then interpreted (or rejected) by
-        # the numeric parser rather than silently glued into one number.
+        ("1,000,", "1000"),
+        ("1,000, 2,000", "1000 2000"),
+        ("1,00,000", "100000"),
+        ("12,34,567", "1234567"),
+        (",100", "100"),
+        # any other digit,digit comma is kept
         ("1,2", "1,2"),
+        ("1,2,", "1,2"),
         ("1,2,3", "1,2,3"),
         ("(3,4)", "(3,4)"),
         ("1,2345", "1,2345"),
-        ("1,234,56", "1,234,56"),
-        (",100", ",100"),
-        # Not a thousands grouping either, so it is left intact here. The
-        # numeric parser downstream reads a comma followed by four or more
-        # digits as a group separator, so this still scores as 10000.
         ("1,0000", "1,0000"),
+        ("1,234,56", "1,234,56"),
+        ("1,234,5678", "1,234,5678"),
+        ("1,00,000,000", "1,00,000,000"),
+        ("1.234,567", "1.234,567"),
     ],
 )
 def test_strip_numeric_punctuation(input_str: str, expected: str) -> None:
