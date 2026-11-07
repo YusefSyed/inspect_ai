@@ -665,14 +665,34 @@ def _type_empty_frames(dfs: list["pd.DataFrame"]) -> list["pd.DataFrame"]:
 
     A log with no matching detail records yields a zero-row frame whose detail
     columns are typed as strings, and concatenating those with typed columns
-    (timestamps, numbers) would make them object columns.
+    (timestamps, numbers) would make them object columns. Only those string
+    placeholders are cast, and not to nested types, which they cannot convert to.
     """
+    import pandas as pd
+    import pyarrow as pa
+
     dtypes = {col: df[col].dtype for df in dfs if len(df) > 0 for col in df.columns}
+
+    def castable(empty: Any, target: Any) -> bool:
+        return (
+            isinstance(empty, pd.ArrowDtype)
+            and pa.types.is_string(empty.pyarrow_dtype)
+            and not (
+                isinstance(target, pd.ArrowDtype)
+                and pa.types.is_nested(target.pyarrow_dtype)
+            )
+        )
 
     typed: list[pd.DataFrame] = []
     for df in dfs:
         if len(df) == 0:
-            df = df.astype({col: dtypes[col] for col in df.columns if col in dtypes})
+            df = df.astype(
+                {
+                    col: dtypes[col]
+                    for col in df.columns
+                    if col in dtypes and castable(df[col].dtype, dtypes[col])
+                }
+            )
         typed.append(df)
     return typed
 

@@ -447,14 +447,18 @@ def test_events_df_filter_matches_one_log_of_two():
     logs = [str(SECURITY_GUIDE_LOG), str(BROWSER_LOG)]
     df = events_df(logs, filter=lambda e: e.event == "tool")
     assert len(df) == 4
-    assert df["log"].map(lambda log: Path(log).name).unique() == [BROWSER_LOG.name]
+    assert df["log"].map(lambda log: Path(log).name).unique().tolist() == [
+        BROWSER_LOG.name
+    ]
 
 
 def test_messages_df_filter_matches_one_log_of_two():
     logs = [str(SECURITY_GUIDE_LOG), str(BROWSER_LOG)]
     df = messages_df(logs, filter=lambda m: m.role == "tool")
     assert len(df) == 4
-    assert df["log"].map(lambda log: Path(log).name).unique() == [BROWSER_LOG.name]
+    assert df["log"].map(lambda log: Path(log).name).unique().tolist() == [
+        BROWSER_LOG.name
+    ]
 
 
 def test_messages_df_log_without_messages(tmp_path: Path):
