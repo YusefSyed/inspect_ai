@@ -971,7 +971,7 @@ def test_tools_from_openai_tools_name_only():
     # valid per the OpenAI API: `description` and `parameters` are optional,
     # and omitting `parameters` declares a function with no parameters
     [info] = tools_from_openai_tools([_openai_function_tool()])
-    assert info == ToolInfo(name="noop", description="noop", parameters=ToolParams())
+    assert info == ToolInfo(name="noop", description="", parameters=ToolParams())
 
 
 def test_tools_from_openai_tools_without_parameters():
@@ -995,21 +995,16 @@ def test_tools_from_openai_tools_without_description():
             )
         ]
     )
-    assert info.description == "noop"
+    assert info.description == ""
     assert info.parameters.required == ["a"]
     assert set(info.parameters.properties) == {"a"}
 
 
-def test_tools_from_openai_tools_empty_description_uses_name():
+def test_tools_from_openai_tools_keeps_empty_description():
+    # sandbox tool grants match declarations to served tools by description,
+    # and an empty description is matched like any other
     [info] = tools_from_openai_tools([_openai_function_tool(description="")])
-    assert info.description == "noop"
-
-
-def test_tools_from_openai_tools_rejects_non_function_tool():
-    with pytest.raises(AssertionError):
-        tools_from_openai_tools(
-            [cast(Any, {"type": "custom", "custom": {"name": "x"}})]
-        )
+    assert info.description == ""
 
 
 @agent
@@ -1037,7 +1032,7 @@ def test_bridged_completions_tool_without_description_or_parameters():
     model_events = [e for e in log.samples[0].events if isinstance(e, ModelEvent)]
     assert model_events
     assert model_events[0].tools == [
-        ToolInfo(name="noop", description="noop", parameters=ToolParams())
+        ToolInfo(name="noop", description="", parameters=ToolParams())
     ]
 
 

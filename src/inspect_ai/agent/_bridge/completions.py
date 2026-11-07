@@ -161,12 +161,11 @@ def tools_from_openai_tools(tools: "list[ChatCompletionToolParam]") -> list[Tool
     for tool in tools:
         assert tool["type"] == "function", '"custom" tool calls are not supported'
         function = tool["function"].copy()
-        # `description` and `parameters` are optional: omitting `parameters`
-        # declares a function with an empty parameter list
+        # both `description` and `parameters` are optional in the API
         inspect_tools.append(
             ToolInfo(
                 name=function["name"],
-                description=function.get("description") or function["name"],
+                description=function.get("description") or "",
                 parameters=ToolParams.model_validate(function.get("parameters") or {}),
             )
         )

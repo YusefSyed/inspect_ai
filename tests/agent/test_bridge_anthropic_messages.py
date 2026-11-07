@@ -462,17 +462,17 @@ def _bridged_tool_info(client_tool: dict[str, Any]) -> ToolInfo:
     return tools[0]
 
 
-def test_bridge_tool_without_description_uses_name() -> None:
+def test_bridge_tool_without_description() -> None:
     # `ToolParam.description` is optional in the anthropic SDK
     info = _bridged_tool_info(
         {"name": "noop", "input_schema": {"type": "object", "properties": {}}}
     )
     assert info.name == "noop"
-    assert info.description == "noop"
+    assert info.description == ""
     assert info.parameters == ToolParams()
 
 
-def test_bridge_tool_with_empty_description_uses_name() -> None:
+def test_bridge_tool_keeps_empty_description() -> None:
     info = _bridged_tool_info(
         {
             "name": "noop",
@@ -480,7 +480,7 @@ def test_bridge_tool_with_empty_description_uses_name() -> None:
             "input_schema": {"type": "object", "properties": {}},
         }
     )
-    assert info.description == "noop"
+    assert info.description == ""
 
 
 def test_bridge_tool_keeps_description_and_schema() -> None:

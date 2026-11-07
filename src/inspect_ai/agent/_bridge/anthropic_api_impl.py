@@ -384,8 +384,7 @@ def tools_from_anthropic_tools(
             tools.append(
                 ToolInfo(
                     name=anthropic_tool["name"],
-                    description=anthropic_tool.get("description")
-                    or anthropic_tool["name"],
+                    description=anthropic_tool.get("description") or "",
                     parameters=ToolParams.model_validate(
                         anthropic_tool["input_schema"]
                     ),

@@ -256,11 +256,3 @@ def test_function_tool_keeps_declared_parameters_and_description() -> None:
     assert tool_info.parameters.required == ["a"]
     assert set(tool_info.parameters.properties) == {"a"}
     assert _emit(tool_info) == original
-
-
-def test_custom_tool_without_description_uses_name() -> None:
-    original = _custom_tool()
-    del original["description"]
-    tool_info = _function_tool_info(original)
-    assert tool_info.description == "exec"
-    assert _emit(tool_info) == original

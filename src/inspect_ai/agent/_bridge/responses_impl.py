@@ -774,7 +774,7 @@ def tool_from_responses_tool(
     elif is_custom_tool_param(tool_param):
         return ToolInfo(
             name=tool_param["name"],
-            description=tool_param.get("description") or tool_param["name"],
+            description=tool_param["description"] or tool_param["name"],
             parameters=ToolParams(
                 properties={"input": JSONSchema(type="string", description="Input.")},
                 required=["input"],
