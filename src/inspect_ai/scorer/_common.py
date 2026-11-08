@@ -116,21 +116,19 @@ def match_str(
     elif numeric and (t_list := _normalized_number_list(t)) is not None:
         # the target is a comma-separated list of numbers ("1,2,3"): compare
         # whole list tokens, not raw characters, so "11,2,3" does not end
-        # with a match for "1,2,3"
+        # with a match for "1,2,3"; "1, 2, 3" is read as the list "1,2,3"
+        v = re.sub(r"(?<=\d)\s*,\s*(?=\d)", ",", strip_numeric_punctuation(v))
         if location == "exact":
-            # the whole value is the list, so "1, 2, 3" is unambiguous
-            v = re.sub(r"(?<=\d)\s*,\s*(?=\d)", ",", v)
-            v_list = _normalized_number_list(
-                strip_numeric_punctuation(v), trim_punctuation=False
-            )
+            v_list = _normalized_number_list(v, trim_punctuation=False)
             return answer if v_list is None else v_list, v_list == t_list
-        words = re.split(r"\s+", strip_numeric_punctuation(v))
-        lists = [x for x in map(_normalized_number_list, words) if x is not None]
+        # begin/end take the first/last number or list, not the first/last list
+        words = re.split(r"\s+", v)
+        numbers = [x for x in map(_normalized_number_or_list, words) if x is not None]
         if location == "any":
-            return (t_list, True) if t_list in lists else (answer, False)
+            return (t_list, True) if t_list in numbers else (answer, False)
         if location == "end":
-            lists.reverse()
-        v_list = lists[0] if lists else ""
+            numbers.reverse()
+        v_list = numbers[0] if numbers else ""
         return v_list, v_list == t_list
     elif ignore_punctuation:
         v = strip_punctuation(v)
@@ -163,7 +161,7 @@ _DIGIT_COMMA_DIGIT = re.compile(r"\d,\d")
 # are deliberately excluded: "<42", ">=42", "~42" express bounds or
 # approximations, not the value itself, and trimming them would grade a
 # hedge as the exact answer (false CORRECTs).
-_NUMERIC_PUNCTUATION_TRIM = "!?:;()[]{}'\"`"
+_NUMERIC_PUNCTUATION_TRIM = "!?:;,()[]{}'\"`"
 
 
 def _clean_numeric_word(s: str) -> str:
@@ -186,8 +184,6 @@ def _parse_number(s: str, *, trim_punctuation: bool = True) -> float | None:
     ``inf`` also return None.
     """
     s_cleaned = _clean_numeric_word(s) if trim_punctuation else s
-    # a comma left after strip_numeric_punctuation sits between two digits
-    # outside a thousands grouping ("1,2"): not one number
     if "," in s_cleaned:
         return None
     for parse in (float, unicode_number_to_float):
@@ -218,6 +214,15 @@ def _normalized_number_list(s: str, *, trim_punctuation: bool = True) -> str | N
             return None
         normalized.append(format(num, ".5g"))
     return ",".join(normalized)
+
+
+def _normalized_number_or_list(s: str) -> str | None:
+    """Normalize a number or a comma-separated list of numbers, or None."""
+    num_list = _normalized_number_list(s)
+    if num_list is not None:
+        return num_list
+    num = _parse_number(s)
+    return None if num is None else format(num, ".5g")
 
 
 def first_number_normalized(words: list[str]) -> str:

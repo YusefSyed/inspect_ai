@@ -54,10 +54,10 @@ def strip_numeric_punctuation(s: str) -> str:
     stripped = re.sub(r"[$£€*_]", "", s)
 
     # strip , inside a thousands grouping, and any , not between two digits.
-    # A remaining digit,digit comma ("1,2", "(3,4)") is kept so the token is
-    # not read as one number.
+    # A remaining comma between digits ("1,2", "(3,4)", "1, 2") is kept so
+    # the token is not read as one number.
     stripped = _THOUSANDS_GROUPED.sub(lambda m: m.group().replace(",", ""), stripped)
-    stripped = re.sub(r"(?<!\d),|,(?!\d)", "", stripped)
+    stripped = re.sub(r"(?<!\d),|,(?!\s*\d)", "", stripped)
 
     # strip . if it's followed by a space, the end of the string,
     # or a non-digit character

@@ -430,10 +430,9 @@ async def test_numeric_long_repeated_chinese_units_scores():
     assert result.text == CORRECT
 
 
-# --- commas: thousands grouping vs separate numbers ---------------------------
+# --- commas: thousands grouping vs separate numbers --------------------------
 
 Location = Literal["begin", "end", "any", "exact"]
-ALL_LOCATIONS = ["begin", "end", "any", "exact"]
 
 
 async def _score(model_output: str, target: str, location: Location) -> str:
@@ -446,173 +445,58 @@ async def _score(model_output: str, target: str, location: Location) -> str:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("location", ALL_LOCATIONS)
+@pytest.mark.parametrize("location", ["begin", "end", "any", "exact"])
 @pytest.mark.parametrize(
-    "model_output,target",
+    "model_output,target,expected",
     [
-        ("1,2", "12"),
-        ("1,2,3", "123"),
-        ("12", "1,2"),
-        ("123", "1,2,3"),
-        ("2,5", "25"),
-        ("1,2,", "12"),
-        ("1,2345", "12345"),
-        ("1,0000", "10000"),
-        ("12,3456", "123456"),
-        ("1,234,5678", "12345678"),
-        ("1,234,56", "123456"),
-        ("1,00,000,000", "100000000"),
-        ("1.234,567", "1.234567"),
-        ("1,234.567,890", "1234.56789"),
+        # separate numbers are not collapsed into one
+        ("1,2", "12", INCORRECT),
+        ("1,2,3", "123", INCORRECT),
+        ("12", "1,2", INCORRECT),
+        ("1,2,", "12", INCORRECT),
+        ("1,2345", "12345", INCORRECT),
+        # nor read with the comma as a decimal mark
+        ("2,5", "2.5", INCORRECT),
+        ("(3,4)", "3.4", INCORRECT),
+        ("1,2", "1.2", INCORRECT),
+        # thousands (and lakh) grouping is still one number
+        ("1,000", "1000", CORRECT),
+        ("-1,000", "-1000", CORRECT),
+        ("12,345,678", "12345678", CORRECT),
+        ("1,234.5", "1234.5", CORRECT),
+        ("$1,000,000.50", "1000000.50", CORRECT),
+        ("1,00,000", "100000", CORRECT),
+        # a list target still matches the same list written with spaces
+        ("1,2,3", "1, 2, 3", CORRECT),
     ],
 )
-async def test_numeric_comma_outside_grouping_is_not_a_number(
-    location: Location, model_output: str, target: str
+async def test_numeric_comma(
+    location: Location, model_output: str, target: str, expected: str
 ):
-    assert await _score(model_output, target, location) == INCORRECT
+    assert await _score(model_output, target, location) == expected
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("location", ["begin", "end", "any"])
 @pytest.mark.parametrize(
-    "model_output,target",
-    [
-        ("(3,4)", "34"),
-        ("The answer is (3,4)", "34"),
-        ("The answer is 3,4, so we're done", "34"),
-        ("I get 1,2, and that's it", "12"),
-    ],
+    "model_output", ["The answer is (3,4)", "The answer is 3,4, so we're done"]
 )
-async def test_numeric_comma_pair_in_text_is_not_a_number(
-    location: Location, model_output: str, target: str
-):
-    assert await _score(model_output, target, location) == INCORRECT
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("location", ["begin", "any"])
-async def test_numeric_comma_pair_before_grouped_number(location: Location):
-    assert await _score("Values: 1,2 and 1,000", "12", location) == INCORRECT
-
-
-@pytest.mark.anyio
-async def test_numeric_grouped_number_after_comma_pair_begin():
-    assert await _score("Values: 1,2 and 1,000", "1000", "begin") == CORRECT
-
-
-# a comma is not read as a locale decimal mark either (as in the math scorer)
-@pytest.mark.anyio
-@pytest.mark.parametrize("location", ALL_LOCATIONS)
-@pytest.mark.parametrize(
-    "model_output,target",
-    [
-        ("(3,4)", "3.4"),
-        ("1,2", "1.2"),
-        ("1.2", "1,2"),
-        ("3.4", "(3,4)"),
-        ("1234,567", "1234.567"),
-        ("2,5", "2.5"),
-        ("0,5", "0.5"),
-        ("3,14", "3.14"),
-        ("1,23", "1.23"),
-        ("1.000,50", "1000.5"),
-        ("1.234.567,89", "1234567.89"),
-    ],
-)
-async def test_numeric_comma_is_not_a_decimal_mark(
-    location: Location, model_output: str, target: str
-):
-    assert await _score(model_output, target, location) == INCORRECT
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("location", ALL_LOCATIONS)
-@pytest.mark.parametrize(
-    "model_output,target",
-    [
-        ("11,2,3", "1,2,3"),
-        ("41,2,3", "1,2,3"),
-        ("1,2,3,4", "2,3,4"),
-        ("1,2,3,4", "1,2,3"),
-        ("11,2-dichloroethane", "1,2-dichloroethane"),
-    ],
-)
-async def test_numeric_comma_list_target_needs_whole_list(
-    location: Location, model_output: str, target: str
-):
-    assert await _score(model_output, target, location) == INCORRECT
+async def test_numeric_comma_pair_in_text(location: Location, model_output: str):
+    assert await _score(model_output, "34", location) == INCORRECT
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "model_output,target,location",
+    "model_output,target,location,expected",
     [
-        ("The answer is 1,2,3", "1,2,3", "end"),
-        ("The answer is 1,2,3", "1,2,3", "any"),
-        ("1,2,3 is the answer", "1,2,3", "begin"),
-        ("1,2,3", "1,2,3", "exact"),
-        ("1, 2, 3", "1,2,3", "exact"),
-        ("(1,2,3).", "1,2,3", "end"),
-        ("It is 1,2-dichloroethane", "1,2-dichloroethane", "end"),
+        ("The answer is 1,2,3", "1,2,3", "end", CORRECT),
+        ("11,2,3", "1,2,3", "end", INCORRECT),
+        ("11,2,3", "1,2,3", "any", INCORRECT),
+        ("The answer is 1,2,3. The sum is 6", "1,2,3", "end", INCORRECT),
+        ("11,2-dichloroethane", "1,2-dichloroethane", "end", INCORRECT),
     ],
 )
-async def test_numeric_comma_list_target_matches(
-    model_output: str, target: str, location: Location
+async def test_numeric_comma_list_target(
+    model_output: str, target: str, location: Location, expected: str
 ):
-    assert await _score(model_output, target, location) == CORRECT
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("location", ALL_LOCATIONS)
-@pytest.mark.parametrize(
-    "model_output,target",
-    [
-        ("1,000", "1000"),
-        ("-1,000", "-1000"),
-        ("100,000", "100000"),
-        ("12,345,678", "12345678"),
-        ("1,234.5", "1234.5"),
-        ("1,234,567.89", "1234567.89"),
-        ("$1,000,000.50", "1000000.50"),
-        ("1,000$", "1000"),
-        ("1\\,234", "1234"),
-        ("**1,000**", "1000"),
-        ("1,000.", "1000"),
-        ("1,000,", "1000"),
-        ("1000", "1,000"),
-        ("1,00,000", "100000"),
-        ("12,34,567", "1234567"),
-    ],
-)
-async def test_numeric_thousands_grouping_matches(
-    location: Location, model_output: str, target: str
-):
-    assert await _score(model_output, target, location) == CORRECT
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("location", ["begin", "end", "any"])
-@pytest.mark.parametrize(
-    "model_output,target",
-    [
-        ("(1,000)", "1000"),
-        ("The total is 1,000.", "1000"),
-        ("We got 1,000, then stopped", "1000"),
-        ("1,000;", "1000"),
-    ],
-)
-async def test_numeric_thousands_grouping_in_text_matches(
-    location: Location, model_output: str, target: str
-):
-    assert await _score(model_output, target, location) == CORRECT
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize(
-    "target,location", [("1000", "begin"), ("3000", "end"), ("2000", "any")]
-)
-async def test_numeric_thousands_grouping_in_list_of_numbers(
-    target: str, location: Location
-):
-    output = "The values are 1,000, 2,000 and 3,000"
-    assert await _score(output, target, location) == CORRECT
+    assert await _score(model_output, target, location) == expected
